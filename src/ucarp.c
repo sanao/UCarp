@@ -26,6 +26,7 @@ static void usage(void)
         "--interface=<if> (-i <if>): bind interface <if>\n"
         "--srcip=<ip> (-s <ip>): source (real) IP address of that host\n"
         "--mcast=<ip> (-m <ip>): multicast group IP address (default 224.0.0.18)\n"
+        "--igmpv3src=<ip1,ip2> (-I <ip1,ip2>): comma-separated list of IGMPv3 sources\n"
         "--vhid=<id> (-v <id>): virtual IP identifier (1-255)\n"
         "--pass=<pass> (-p <pass>): password\n"
         "--passfile=<file> (-o <file>): read password from file\n"
@@ -85,6 +86,43 @@ static void die_mem(void)
     exit(EXIT_FAILURE);
 }
 
+static unsigned int get_nb_items(const char * str, char delimiter)
+{
+    unsigned int nb_items = 1;
+    while (*str != '\0') {
+        if (*str == delimiter) {
+            nb_items++;
+        }
+        str++;
+    }
+    return nb_items;
+}
+
+static int init_igmpv3_sources(const char *sources)
+{
+    nb_igmpv3sources = get_nb_items(sources, ',');
+    igmpv3sources = (struct in_addr *)calloc(nb_igmpv3sources, sizeof(struct in_addr));
+    const char delimiter = ',';
+    char *ptr;
+    char *token = strtok_r((char *)sources, &delimiter, &ptr);
+
+    unsigned int idx_src = 0;
+    while (token != NULL) {
+        logfile(LOG_DEBUG, _("process IGMPv3 source: %s"), token);
+        if (inet_pton(AF_INET, token, &igmpv3sources[idx_src]) != 1) {
+            logfile(LOG_ERR, _("Invalid IGMPv3 source %s at index %d"), token, idx_src);
+            return 1;
+        }
+        token = strtok_r(NULL, &delimiter, &ptr);
+        idx_src++;
+    }
+    if(nb_igmpv3sources != idx_src) {
+        logfile(LOG_ERR, _("Invalid IGMPv3 sources format %s: size mismatch"), sources);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     int option_index = 0;
@@ -125,6 +163,19 @@ int main(int argc, char *argv[])
                 logfile(LOG_ERR, _("Invalid address: [%s]"), optarg);
                 return 1;
             }
+            break;
+        }
+        case 'I': {
+            char * str_igmpv3_sources;
+            if ((str_igmpv3_sources = strdup(optarg)) == NULL) {
+                die_mem();
+            }
+            if (init_igmpv3_sources(str_igmpv3_sources) != 0) {
+                logfile(LOG_ERR, _("Error during parsing IGMPv3 sources: [%s]"), str_igmpv3_sources);
+                free(str_igmpv3_sources);
+                return 1;
+            }
+            free(str_igmpv3_sources);
             break;
         }
         case 'v': {

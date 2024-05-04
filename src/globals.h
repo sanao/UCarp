@@ -12,6 +12,8 @@
 GLOBAL0(char *interface);
 GLOBAL0(struct in_addr srcip);
 GLOBAL0(struct in_addr mcastip);
+GLOBAL0(struct in_addr *igmpv3sources);
+GLOBAL0(unsigned int nb_igmpv3sources);
 GLOBAL0(unsigned char vhid);
 GLOBAL0(char *pass);
 GLOBAL0(struct in_addr vaddr);

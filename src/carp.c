@@ -666,6 +666,7 @@ static char *build_bpf_rule(void)
 int docarp(void)
 {
     char errbuf[PCAP_ERRBUF_SIZE];
+    struct ip_mreq_source req_src_add;
     struct ip_mreq req_add;
     struct bpf_program bpfp;
     struct pollfd pfds[1];
@@ -790,15 +791,45 @@ int docarp(void)
         return -1;
     }
     if (!no_mcast) {
-        memset(&req_add, 0, sizeof req_add);
-        req_add.imr_multiaddr.s_addr = mcastip.s_addr;
-        req_add.imr_interface.s_addr = srcip.s_addr;
-        if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                       &req_add, sizeof req_add) < 0) {
-            logfile(LOG_ERR, "Can't do IP_ADD_MEMBERSHIP errno=%s (%d)",
-                    strerror(errno), errno);
-            close(fd);
-            return -1;
+        if (nb_igmpv3sources) {
+            logfile(LOG_DEBUG, _("Using %d IGMPv3 sources"), nb_igmpv3sources);
+            for (unsigned int idx_src = 0; idx_src < nb_igmpv3sources; idx_src++) {
+                memset(&req_src_add, 0, sizeof req_src_add);
+                req_src_add.imr_multiaddr.s_addr = mcastip.s_addr;
+                req_src_add.imr_sourceaddr.s_addr = igmpv3sources[idx_src].s_addr;
+                req_src_add.imr_interface.s_addr = srcip.s_addr;
+                if (setsockopt(fd, IPPROTO_IP, IP_ADD_SOURCE_MEMBERSHIP,
+                            &req_src_add, sizeof req_src_add) < 0) {
+                    logfile(LOG_ERR, "Can't do IP_ADD_SOURCE_MEMBERSHIP errno=%s (%d)",
+                            strerror(errno), errno);
+                    close(fd);
+                    return -1;
+                }
+                char str_multicast[INET_ADDRSTRLEN];
+                if (inet_ntop(AF_INET, &req_src_add.imr_multiaddr.s_addr, str_multicast, INET_ADDRSTRLEN) == NULL) {
+                    logfile(LOG_ERR, _("Unable to convert multicast IP %u to string"), req_src_add.imr_multiaddr.s_addr);
+                    close(fd);
+                    return 1;
+                }
+                char str_source[INET_ADDRSTRLEN];
+                if (inet_ntop(AF_INET, &req_src_add.imr_sourceaddr.s_addr, str_source, INET_ADDRSTRLEN) == NULL) {
+                    logfile(LOG_ERR, _("Unable to convert IGMPv3 source IP %u to string"), req_src_add.imr_sourceaddr.s_addr);
+                    close(fd);
+                    return 1;
+                }
+                logfile(LOG_INFO, _("Allow source %s for multicast IP %s"), str_source, str_multicast);
+            }
+        } else {
+            memset(&req_add, 0, sizeof req_add);
+            req_add.imr_multiaddr.s_addr = mcastip.s_addr;
+            req_add.imr_interface.s_addr = srcip.s_addr;
+            if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
+                        &req_add, sizeof req_add) < 0) {
+                logfile(LOG_ERR, "Can't do IP_ADD_MEMBERSHIP errno=%s (%d)",
+                        strerror(errno), errno);
+                close(fd);
+                return -1;
+            }
         }
     }
 #ifdef SIOCGIFFLAGS
